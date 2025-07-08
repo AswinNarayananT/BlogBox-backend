@@ -11,6 +11,7 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     profile_pic = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
+    is_superuser = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_login = Column(DateTime(timezone=True), nullable=True)
 
