@@ -36,5 +36,4 @@ class BlogAuthorOut(BaseModel):
     username: str
     profile_image: Optional[str] = None
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

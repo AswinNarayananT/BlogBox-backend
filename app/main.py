@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import user, auth, blog
+from app.api.routes import admin, auth, blog
 from app.db.base import Base
 from app.db.session import engine
 from decouple import config
@@ -23,3 +23,4 @@ app.add_middleware(
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(blog.router, prefix="/api/v1/blogs", tags=["blogs"])
+app.include_router(admin.router, prefix="/api/v1/admin", tags=["blogs"])

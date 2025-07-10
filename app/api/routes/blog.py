@@ -79,7 +79,8 @@ def create_blog(
     db.commit()
     db.refresh(new_blog)
 
-    return BlogOut.model_validate(new_blog)
+    return BlogOut.model_validate(new_blog, from_attributes=True)
+
 
 
 @router.patch("/{blog_id}", response_model=BlogOut)
