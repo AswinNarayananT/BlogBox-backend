@@ -1,25 +1,25 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import user, auth
-from app.models import user as user_models
+from app.api.routes import user, auth, blog
 from app.db.base import Base
 from app.db.session import engine
+from decouple import config
 
-# Create tables
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
-# ✅ Add CORS middleware
+frontend_url = config("FRONTEND_URL", default="http://localhost:5173")
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Or replace with ["http://localhost:3000"] to restrict to your frontend
+    allow_origins=[frontend_url],
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all HTTP methods, including OPTIONS
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# Include your routers
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
-app.include_router(user.router, prefix="/api/v1/users", tags=["users"])
+app.include_router(blog.router, prefix="/api/v1/blogs", tags=["blogs"])

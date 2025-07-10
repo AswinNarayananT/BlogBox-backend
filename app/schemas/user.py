@@ -30,3 +30,11 @@ class UserOut(UserBase):
 
     class Config:
         orm_mode = True
+
+class BlogAuthorOut(BaseModel):
+    id: int
+    username: str
+    profile_image: Optional[str] = None
+
+    class Config:
+        orm_mode = True

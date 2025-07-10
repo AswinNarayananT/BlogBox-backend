@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 from datetime import timedelta, datetime, timezone
 import time
@@ -75,3 +75,9 @@ def generate_signature():
     payload_to_sign = f"timestamp={timestamp}{CLOUDINARY_API_SECRET}"
     signature = hashlib.sha1(payload_to_sign.encode("utf-8")).hexdigest()
     return {"timestamp": timestamp, "signature": signature}
+
+
+@router.post("/logout", status_code=status.HTTP_200_OK)
+def logout(response: Response):
+    response.delete_cookie(key="refresh_token", httponly=True, secure=True, samesite="lax")
+    return {"message": "Successfully logged out"}
