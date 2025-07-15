@@ -10,7 +10,6 @@ class Blog(Base):
     title = Column(String(255), nullable=False)
     content = Column(Text, nullable=False)
     image = Column(String, nullable=True)
-    attachment = Column(String, nullable=True)
     author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -22,6 +21,7 @@ class Blog(Base):
     author = relationship("User", back_populates="blogs")
     comments = relationship("Comment", back_populates="blog", cascade="all, delete-orphan")
     interactions = relationship("BlogInteraction", back_populates="blog", cascade="all, delete-orphan")
+    attachments = relationship("Attachment", back_populates="blog", cascade="all, delete-orphan")
 
 
 
@@ -38,3 +38,15 @@ class Comment(Base):
 
     user = relationship("User", back_populates="comments")
     blog = relationship("Blog", back_populates="comments")
+
+
+class Attachment(Base):
+    __tablename__ = "attachments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    file_url = Column(String, nullable=False)
+    file_public_id = Column(String, nullable=False)  
+    blog_id = Column(Integer, ForeignKey("blogs.id", ondelete="CASCADE"), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    blog = relationship("Blog", back_populates="attachments")

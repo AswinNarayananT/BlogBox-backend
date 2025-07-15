@@ -7,12 +7,14 @@ from app.models.blog import Blog, Comment
 from app.models.blog_interaction import BlogInteraction
 from app.schemas.blog import BlogCreate, BlogOut, BlogUpdate
 from app.schemas.interaction import InteractionOut
-from app.schemas.comment import CommentCreate, CommentOut
+from app.schemas.comment import CommentCreate, CommentOut, CommentUpdate
 from app.schemas.user import BlogAuthorOut
 from app.db.session import get_db
 from app.core.security import get_current_user
 from typing import Optional
 from datetime import datetime, timezone
+from fastapi import Query
+from sqlalchemy import case
 
 router = APIRouter()
 
@@ -80,6 +82,38 @@ def create_blog(
     db.refresh(new_blog)
 
     return BlogOut.model_validate(new_blog, from_attributes=True)
+
+
+@router.get("/{blog_id}", response_model=BlogOut)
+def get_blog_detail(
+    blog_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user) 
+):
+    blog = (
+        db.query(Blog)
+        .filter(Blog.id == blog_id, Blog.is_published == True)
+        .first()
+    )
+
+    if not blog:
+        raise HTTPException(status_code=404, detail="Blog not found")
+
+    blog_out = BlogOut.model_validate(blog, from_attributes=True)
+    blog_out.author = BlogAuthorOut.model_validate(blog.author, from_attributes=True)
+
+    if current_user:
+        interaction = (
+            db.query(BlogInteraction)
+            .filter_by(blog_id=blog.id, user_id=current_user.id)
+            .first()
+        )
+        if interaction:
+            blog_out.interaction = InteractionOut.model_validate(interaction, from_attributes=True)
+        else:
+            blog_out.interaction = InteractionOut(seen=False, liked=False, unliked=False)
+
+    return blog_out
 
 
 
@@ -170,7 +204,6 @@ def like_blog(blog_id: int, db: Session = Depends(get_db), current_user: User = 
         db.add(interaction)
 
     if not interaction.liked:
-        # If they had disliked before, decrease unlikes first
         if interaction.unliked:
             blog.unlikes -= 1
 
@@ -210,7 +243,6 @@ def unlike_blog(blog_id: int, db: Session = Depends(get_db), current_user: User 
         db.add(interaction)
 
     if not interaction.unliked:
-        # If they had liked before, decrease likes first
         if interaction.liked:
             blog.likes -= 1
 
@@ -233,8 +265,34 @@ def unlike_blog(blog_id: int, db: Session = Depends(get_db), current_user: User 
     return blog_out
 
 
+@router.delete("/{blog_id}", response_model=BlogOut)
+def delete_blog(
+    blog_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    blog = db.query(Blog).filter(Blog.id == blog_id).first()
+
+    if not blog:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog not found")
+
+    if not current_user.is_superuser and blog.author_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to delete this blog")
+
+    db.delete(blog)
+    db.commit()
+
+    return BlogOut.model_validate(blog, from_attributes=True)
+
+
 @router.get("/{blog_id}/comments", response_model=List[CommentOut])
-def get_blog_comments(blog_id: int, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+def get_blog_comments(
+    blog_id: int,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
     blog = db.query(Blog).filter(Blog.id == blog_id).first()
     if not blog:
         raise HTTPException(status_code=404, detail="Blog not found")
@@ -244,7 +302,19 @@ def get_blog_comments(blog_id: int, db: Session = Depends(get_db), current_user=
     if not current_user.is_superuser:
         query = query.filter(Comment.is_approved == True)
 
-    comments = query.order_by(Comment.created_at.desc()).all()
+
+    user_first_case = case(
+        (Comment.user_id == current_user.id, 0), 
+        else_=1                                   
+    )    
+
+    comments = (
+        query
+        .order_by(user_first_case, Comment.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
     return comments
 
 
@@ -281,4 +351,45 @@ def toggle_comment_approval(comment_id: int, db: Session = Depends(get_db), curr
     db.commit()
     db.refresh(comment)
     
+    return comment
+
+
+@router.patch("/comments/{comment_id}", response_model=CommentOut)
+def update_comment(
+    comment_id: int,
+    comment_in: CommentUpdate,  
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    if comment.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to update this comment")
+
+    update_data = comment_in.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(comment, key, value)
+
+    db.commit()
+    db.refresh(comment)
+    return comment
+
+
+@router.delete("/comments/{comment_id}", response_model=CommentOut)
+def delete_comment(
+    comment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    comment = db.query(Comment).filter(Comment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    if comment.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this comment")
+
+    db.delete(comment)
+    db.commit()
     return comment

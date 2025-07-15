@@ -9,6 +9,9 @@ class CommentBase(BaseModel):
 class CommentCreate(CommentBase):
     pass
 
+class CommentUpdate(BaseModel):
+    content: str
+
 class CommentOut(CommentBase):
     id: int
     user_id: int

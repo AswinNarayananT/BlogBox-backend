@@ -9,7 +9,7 @@ from decouple import config as decouple_config
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from app.db.base import Base
-from app.models import user  
+from app import models
 from app.core.config import DATABASE_URL
 
 config = context.config
