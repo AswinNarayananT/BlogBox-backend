@@ -20,16 +20,18 @@ router = APIRouter()
 
 @router.get("/", response_model=List[BlogOut])
 def get_blogs(
-    skip: int = 0,
-    limit: int = 10,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(5, ge=1),
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(lambda: None)
 ):
+    skip = (page - 1) * page_size
+
     blogs = (
         db.query(Blog)
         .order_by(Blog.created_at.desc())
         .offset(skip)
-        .limit(limit)
+        .limit(page_size)
         .all()
     )
 
@@ -55,6 +57,7 @@ def get_blogs(
 
 
 
+
 @router.post("/", response_model=BlogOut, status_code=status.HTTP_201_CREATED)
 def create_blog(
     blog_in: BlogCreate,
@@ -72,7 +75,6 @@ def create_blog(
         title=blog_in.title,
         content=blog_in.content,
         image=blog_in.image,
-        attachment=blog_in.attachment,
         is_published=blog_in.is_published,
         author_id=current_user.id,
     )

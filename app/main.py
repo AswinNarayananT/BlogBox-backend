@@ -21,6 +21,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+def read_root():
+    return {"message": "BlogBox backend is running 🚀"}
+
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(blog.router, prefix="/api/v1/blogs", tags=["blogs"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["blogs"])

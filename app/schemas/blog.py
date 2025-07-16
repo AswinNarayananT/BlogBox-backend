@@ -9,7 +9,6 @@ class BlogBase(BaseModel):
     title: str
     content: str
     image: Optional[str] = None
-    attachment: Optional[str] = None
     is_published: Optional[bool] = True
 
 class BlogCreate(BlogBase):

@@ -1,5 +1,5 @@
-from pydantic import BaseModel, EmailStr
-from typing import Optional
+from pydantic import BaseModel, EmailStr, constr
+from typing import Optional, Annotated
 from datetime import datetime
 
 class UserBase(BaseModel):
@@ -13,6 +13,10 @@ class UserCreate(UserBase):
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+
+class UserSelfUpdate(BaseModel):
+    username: Optional[str] = None
+    profile_pic: Optional[str] = None    
 
 class UserUpdate(BaseModel):
     username: Optional[str] = None
@@ -37,3 +41,8 @@ class BlogAuthorOut(BaseModel):
     profile_image: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class ChangePassword(BaseModel):
+    current_password: Annotated[str, constr(min_length=6)]
+    new_password: Annotated[str, constr(min_length=6)]
