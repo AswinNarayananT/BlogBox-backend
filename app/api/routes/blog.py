@@ -18,14 +18,20 @@ from sqlalchemy import case
 
 router = APIRouter()
 
-@router.get("/", response_model=List[BlogOut])
+from fastapi.responses import JSONResponse
+from math import ceil
+
+@router.get("/", response_model=dict)
 def get_blogs(
     page: int = Query(1, ge=1),
-    page_size: int = Query(5, ge=1),
+    page_size: int = Query(10, ge=1),
     db: Session = Depends(get_db),
     current_user: Optional[User] = Depends(lambda: None)
 ):
     skip = (page - 1) * page_size
+
+    total_items = db.query(Blog).count()
+    total_pages = ceil(total_items / page_size)
 
     blogs = (
         db.query(Blog)
@@ -53,7 +59,65 @@ def get_blogs(
 
         result.append(blog_out)
 
-    return result
+    return {
+        "data": result,
+        "pagination": {
+            "current_page": page,
+            "page_size": page_size,
+            "total_items": total_items,
+            "total_pages": total_pages,
+        },
+    }
+
+
+@router.get("/myblogs/", response_model=dict)
+def get_my_blogs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),  
+):
+    skip = (page - 1) * page_size
+
+    total_items = db.query(Blog).filter(Blog.author_id == current_user.id).count()
+    total_pages = ceil(total_items / page_size)
+
+    blogs = (
+        db.query(Blog)
+        .filter(Blog.author_id == current_user.id)
+        .order_by(Blog.created_at.desc())
+        .offset(skip)
+        .limit(page_size)
+        .all()
+    )
+
+    result = []
+    for blog in blogs:
+        blog_out = BlogOut.model_validate(blog, from_attributes=True)
+        blog_out.author = BlogAuthorOut.model_validate(current_user, from_attributes=True)
+
+        interaction = (
+            db.query(BlogInteraction)
+            .filter_by(blog_id=blog.id, user_id=current_user.id)
+            .first()
+        )
+        if interaction:
+            blog_out.interaction = InteractionOut.model_validate(interaction, from_attributes=True)
+        else:
+            blog_out.interaction = InteractionOut(seen=False, liked=False, unliked=False)
+
+        result.append(blog_out)
+
+    return {
+        "data": result,
+        "pagination": {
+            "current_page": page,
+            "page_size": page_size,
+            "total_items": total_items,
+            "total_pages": total_pages,
+        },
+    }
+
 
 
 
@@ -65,11 +129,6 @@ def create_blog(
     current_user: User = Depends(get_current_user)
 ):
 
-    if not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only superusers can create blogs"
-        )
 
     new_blog = Blog(
         title=blog_in.title,
@@ -132,7 +191,7 @@ def update_blog(
     if not blog:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog not found")
 
-    if not current_user.is_superuser and blog.author_id != current_user.id:
+    if blog.author_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to update this blog")
 
     update_data = blog_in.model_dump(exclude_unset=True)
@@ -278,7 +337,7 @@ def delete_blog(
     if not blog:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog not found")
 
-    if not current_user.is_superuser and blog.author_id != current_user.id:
+    if blog.author_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to delete this blog")
 
     db.delete(blog)

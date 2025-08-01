@@ -23,9 +23,40 @@ def get_db():
         db.close()
 
 
-@router.post("/register", response_model=UserOut)
-def create_user_route(user: UserCreate, db: Session = Depends(get_db)):
-    return create_user(db, user)
+@router.post("/register")
+def create_user_route(user: UserCreate, response: Response, db: Session = Depends(get_db)):
+    new_user = create_user(db, user)
+
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(data={"sub": new_user.email}, expires_delta=access_token_expires)
+
+    refresh_token_expires = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    refresh_token = create_refresh_token(data={"sub": new_user.email}, expires_delta=refresh_token_expires)
+
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        path="/",   
+        max_age=int(refresh_token_expires.total_seconds())
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": new_user.id,
+            "username": new_user.username,
+            "email": new_user.email,
+            "profile_pic": new_user.profile_pic,
+            "is_active": new_user.is_active,
+            "is_superuser": new_user.is_superuser,
+            "created_at": new_user.created_at,
+            "last_login": new_user.last_login,
+        }
+    }
 
 
 @router.post("/login")
@@ -53,6 +84,7 @@ def login(user_cred: UserLogin, response: Response, db: Session = Depends(get_db
         httponly=True,
         secure=True,
         samesite="none",
+        path="/", 
         max_age=int(refresh_token_expires.total_seconds())
     )
 
@@ -71,6 +103,24 @@ def login(user_cred: UserLogin, response: Response, db: Session = Depends(get_db
         }
     }
 
+
+@router.get("/me")
+def get_current_user_profile(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    return {
+        "user": {
+            "id": current_user.id,
+            "username": current_user.username,
+            "email": current_user.email,
+            "profile_pic": current_user.profile_pic,
+            "is_active": current_user.is_active,
+            "is_superuser": current_user.is_superuser,
+            "created_at": current_user.created_at,
+            "last_login": current_user.last_login,
+        }
+    }
 
 
 @router.get("/generate-signature")
@@ -136,7 +186,6 @@ def change_password(
 def refresh_access_token(request: Request, db: Session = Depends(get_db)):
 
     refresh_token = request.cookies.get("refresh_token")
-    print("refresh",refresh_token)
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Refresh token not found")
 
@@ -159,5 +208,14 @@ def refresh_access_token(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/logout", status_code=status.HTTP_200_OK)
 def logout(response: Response):
-    response.delete_cookie(key="refresh_token", httponly=True, secure=True, samesite="lax")
+    response.set_cookie(
+        key="refresh_token",
+        value="",
+        httponly=True,
+        secure=True,
+        samesite="none",
+        path="/",
+        max_age=0  
+    )
+
     return {"message": "Successfully logged out"}
