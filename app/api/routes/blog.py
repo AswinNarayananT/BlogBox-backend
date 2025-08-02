@@ -346,6 +346,36 @@ def delete_blog(
     return BlogOut.model_validate(blog, from_attributes=True)
 
 
+@router.put("/{blog_id}/toggle-publish/")
+def toggle_blog_publish_status(
+    blog_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only superusers can toggle publish status."
+        )
+
+    blog = db.query(Blog).filter(Blog.id == blog_id).first()
+    if not blog:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Blog not found."
+        )
+
+    blog.is_published = not blog.is_published
+    db.commit()
+    db.refresh(blog)
+
+    return {
+        "message": "Publish status toggled successfully.",
+        "blog_id": blog.id,
+        "is_published": blog.is_published,
+    }
+
+
 @router.get("/{blog_id}/comments", response_model=List[CommentOut])
 def get_blog_comments(
     blog_id: int,

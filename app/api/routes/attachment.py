@@ -4,10 +4,12 @@ from typing import List
 
 from app.db.session import get_db
 from app.schemas.attachment import AttachmentCreateWithoutBlogId, AttachmentOut, AttachmentCreate
-from app.crud.attachment import create_attachment, delete_attachment, get_attachments_by_blog
+from app.crud.attachment import create_attachment, get_attachments_by_blog
+from app.core.security import get_current_user
+from app.models.user import User
+from app.models.blog import Blog,Attachment
 import cloudinary.uploader
-from app import models
-from app.api import deps
+
 
 router = APIRouter()
 
@@ -15,8 +17,16 @@ router = APIRouter()
 def create_attachment_endpoint(
     blog_id: int,
     attachment_in: AttachmentCreateWithoutBlogId,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
+    blog = db.query(Blog).filter(Blog.id == blog_id).first()
+    if not blog:
+        raise HTTPException(status_code=404, detail="Blog not found")
+
+    if blog.author_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to add attachment to this blog")
+
     attachment_data = attachment_in.model_dump()
     attachment_data["blog_id"] = blog_id
     attachment_schema = AttachmentCreate(**attachment_data)
@@ -25,12 +35,19 @@ def create_attachment_endpoint(
 @router.delete("/{attachment_id}")
 def delete_attachment_endpoint(
     attachment_id: int,
-    db: Session = Depends(deps.get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-
-    attachment = db.query(models.Attachment).filter(models.Attachment.id == attachment_id).first()
+    attachment = db.query(Attachment).filter(Attachment.id == attachment_id).first()
     if not attachment:
         raise HTTPException(status_code=404, detail="Attachment not found")
+
+    blog = db.query(Blog).filter(Blog.id == attachment.blog_id).first()
+    if not blog:
+        raise HTTPException(status_code=404, detail="Blog not found")
+
+    if blog.author_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this attachment")
 
     result = cloudinary.uploader.destroy(attachment.file_public_id)
     if result.get("result") != "ok":

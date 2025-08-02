@@ -5,6 +5,7 @@ from app.api.routes import admin, auth, blog, attachment
 from app.db.base import Base
 from app.db.session import engine
 from decouple import config
+from app.core import cloudinary_config
 
 Base.metadata.create_all(bind=engine)
 
