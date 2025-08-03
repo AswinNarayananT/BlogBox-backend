@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import List
 from datetime import datetime
 from app.schemas.user import UserOut
 
@@ -20,5 +20,12 @@ class CommentOut(CommentBase):
     created_at: datetime
     user: UserOut
 
-    class Config:
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }
+
+class PaginatedComments(BaseModel):
+    items: List[CommentOut]
+    total: int
+    skip: int
+    limit: int

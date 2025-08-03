@@ -1,40 +1,46 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from typing import List
+from fastapi import APIRouter, HTTPException, status, Depends, Query
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import case
+from typing import List, Optional
 
 from app.models.user import User
 from app.models.blog import Blog, Comment
 from app.models.blog_interaction import BlogInteraction
 from app.schemas.blog import BlogCreate, BlogOut, BlogUpdate
 from app.schemas.interaction import InteractionOut
-from app.schemas.comment import CommentCreate, CommentOut, CommentUpdate
+from app.schemas.comment import CommentCreate, CommentOut, CommentUpdate, PaginatedComments
 from app.schemas.user import BlogAuthorOut
 from app.db.session import get_db
-from app.core.security import get_current_user
-from typing import Optional
+from app.core.security import get_optional_user, get_current_user
 from datetime import datetime, timezone
-from fastapi import Query
-from sqlalchemy import case
+from math import ceil
 
 router = APIRouter()
 
-from fastapi.responses import JSONResponse
-from math import ceil
 
 @router.get("/", response_model=dict)
 def get_blogs(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1),
     db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(lambda: None)
+    current_user: Optional[User] = Depends(get_optional_user), 
 ):
     skip = (page - 1) * page_size
 
-    total_items = db.query(Blog).count()
+    query = db.query(Blog)
+
+    if current_user:
+        if not current_user.is_superuser:
+            query = query.filter(Blog.is_published == True)
+    else:
+        query = query.filter(Blog.is_published == True)
+
+    total_items = query.count()
     total_pages = ceil(total_items / page_size)
 
     blogs = (
-        db.query(Blog)
+        query
+        .options(joinedload(Blog.author))
         .order_by(Blog.created_at.desc())
         .offset(skip)
         .limit(page_size)
@@ -61,12 +67,10 @@ def get_blogs(
 
     return {
         "data": result,
-        "pagination": {
-            "current_page": page,
-            "page_size": page_size,
-            "total_items": total_items,
-            "total_pages": total_pages,
-        },
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "total_items": total_items,
     }
 
 
@@ -79,12 +83,16 @@ def get_my_blogs(
 ):
     skip = (page - 1) * page_size
 
-    total_items = db.query(Blog).filter(Blog.author_id == current_user.id).count()
+    query = db.query(Blog)
+    if not current_user.is_superuser:
+        query = query.filter(Blog.author_id == current_user.id)
+
+    total_items = query.count()
     total_pages = ceil(total_items / page_size)
 
     blogs = (
-        db.query(Blog)
-        .filter(Blog.author_id == current_user.id)
+        query
+        .options(joinedload(Blog.author))  
         .order_by(Blog.created_at.desc())
         .offset(skip)
         .limit(page_size)
@@ -94,17 +102,18 @@ def get_my_blogs(
     result = []
     for blog in blogs:
         blog_out = BlogOut.model_validate(blog, from_attributes=True)
-        blog_out.author = BlogAuthorOut.model_validate(current_user, from_attributes=True)
+        blog_out.author = BlogAuthorOut.model_validate(blog.author, from_attributes=True)
 
-        interaction = (
-            db.query(BlogInteraction)
-            .filter_by(blog_id=blog.id, user_id=current_user.id)
-            .first()
-        )
-        if interaction:
-            blog_out.interaction = InteractionOut.model_validate(interaction, from_attributes=True)
-        else:
-            blog_out.interaction = InteractionOut(seen=False, liked=False, unliked=False)
+        if blog.author_id == current_user.id or not current_user.is_superuser:
+            interaction = (
+                db.query(BlogInteraction)
+                .filter_by(blog_id=blog.id, user_id=current_user.id)
+                .first()
+            )
+            if interaction:
+                blog_out.interaction = InteractionOut.model_validate(interaction, from_attributes=True)
+            else:
+                blog_out.interaction = InteractionOut(seen=False, liked=False, unliked=False)
 
         result.append(blog_out)
 
@@ -117,6 +126,7 @@ def get_my_blogs(
             "total_pages": total_pages,
         },
     }
+
 
 
 
@@ -153,12 +163,15 @@ def get_blog_detail(
 ):
     blog = (
         db.query(Blog)
-        .filter(Blog.id == blog_id, Blog.is_published == True)
+        .filter(Blog.id == blog_id)
         .first()
     )
 
     if not blog:
         raise HTTPException(status_code=404, detail="Blog not found")
+    
+    if not current_user.is_superuser and not blog.is_published:
+        raise HTTPException(status_code=403, detail="Not authorized")
 
     blog_out = BlogOut.model_validate(blog, from_attributes=True)
     blog_out.author = BlogAuthorOut.model_validate(blog.author, from_attributes=True)
@@ -376,7 +389,7 @@ def toggle_blog_publish_status(
     }
 
 
-@router.get("/{blog_id}/comments", response_model=List[CommentOut])
+@router.get("/{blog_id}/comments", response_model=PaginatedComments)
 def get_blog_comments(
     blog_id: int,
     skip: int = Query(0, ge=0),
@@ -393,11 +406,12 @@ def get_blog_comments(
     if not current_user.is_superuser:
         query = query.filter(Comment.is_approved == True)
 
+    total = query.count()
 
     user_first_case = case(
         (Comment.user_id == current_user.id, 0), 
-        else_=1                                   
-    )    
+        else_=1
+    )
 
     comments = (
         query
@@ -406,7 +420,13 @@ def get_blog_comments(
         .limit(limit)
         .all()
     )
-    return comments
+
+    return {
+        "items": comments,
+        "total": total,
+        "skip": skip,
+        "limit": limit
+    }
 
 
 

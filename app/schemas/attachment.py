@@ -15,5 +15,6 @@ class AttachmentOut(BaseModel):
     file_public_id: str
     blog_id: int
 
-    class Config:
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }

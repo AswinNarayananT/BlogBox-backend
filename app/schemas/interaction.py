@@ -17,5 +17,6 @@ class InteractionOut(BaseModel):
     liked: bool
     unliked: bool
 
-    class Config:
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }

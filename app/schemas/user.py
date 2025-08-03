@@ -32,8 +32,9 @@ class UserOut(UserBase):
     created_at: datetime
     last_login: Optional[datetime] = None
 
-    class Config:
-        orm_mode = True
+    model_config = {
+        "from_attributes": True
+    }
 
 class BlogAuthorOut(BaseModel):
     id: int
