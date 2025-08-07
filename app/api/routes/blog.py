@@ -79,20 +79,27 @@ def get_my_blogs(
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),  
+    current_user: User = Depends(get_current_user), 
 ):
     skip = (page - 1) * page_size
 
     query = db.query(Blog)
-    if not current_user.is_superuser:
+
+    if current_user.is_superuser:
         query = query.filter(Blog.author_id == current_user.id)
+
+    else:
+        query = query.filter(
+            Blog.author_id == current_user.id,
+            Blog.is_published == True
+        )
 
     total_items = query.count()
     total_pages = ceil(total_items / page_size)
 
     blogs = (
         query
-        .options(joinedload(Blog.author))  
+        .options(joinedload(Blog.author))
         .order_by(Blog.created_at.desc())
         .offset(skip)
         .limit(page_size)
@@ -104,7 +111,7 @@ def get_my_blogs(
         blog_out = BlogOut.model_validate(blog, from_attributes=True)
         blog_out.author = BlogAuthorOut.model_validate(blog.author, from_attributes=True)
 
-        if blog.author_id == current_user.id or not current_user.is_superuser:
+        if blog.author_id == current_user.id:
             interaction = (
                 db.query(BlogInteraction)
                 .filter_by(blog_id=blog.id, user_id=current_user.id)
@@ -126,10 +133,6 @@ def get_my_blogs(
             "total_pages": total_pages,
         },
     }
-
-
-
-
 
 
 @router.post("/", response_model=BlogOut, status_code=status.HTTP_201_CREATED)
